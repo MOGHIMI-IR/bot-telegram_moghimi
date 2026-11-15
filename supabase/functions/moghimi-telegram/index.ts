@@ -295,13 +295,17 @@ async function healthCheck() {
     await db("bot_user_states?select=telegram_user_id&limit=1");
     const me = await tg("getMe",{});
     if(!me?.is_bot || !me?.username) throw new Error("telegram_bot_check_failed");
+    const webhook = await tg("getWebhookInfo",{});
+    const expectedWebhook = URL.replace(/\\/+$/,"") + "/functions/v1/moghimi-telegram";
+    const webhookReady = webhook?.url === expectedWebhook && !webhook?.last_error_message;
     return healthJson({
-      ok:true,
+      ok:webhookReady,
       service:"moghimi-telegram",
       database:"ok",
       telegram:"ok",
+      webhook:webhookReady ? "ok" : "not_ready",
       bot_username:me.username
-    });
+    },webhookReady ? 200 : 503);
   } catch(e) {
     console.error("moghimi-health",e instanceof Error?e.message:"health_check_failed");
     return healthJson({ok:false,code:"health_check_failed"},503);
