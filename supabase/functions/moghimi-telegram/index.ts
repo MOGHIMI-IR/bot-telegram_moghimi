@@ -296,7 +296,7 @@ async function healthCheck() {
     const me = await tg("getMe",{});
     if(!me?.is_bot || !me?.username) throw new Error("telegram_bot_check_failed");
     const webhook = await tg("getWebhookInfo",{});
-    const expectedWebhook = URL.replace(/\\/+$/,"") + "/functions/v1/moghimi-telegram";
+    const expectedWebhook = (URL.endsWith("/") ? URL.slice(0,-1) : URL) + "/functions/v1/moghimi-telegram";
     const webhookReady = webhook?.url === expectedWebhook && !webhook?.last_error_message;
     return healthJson({
       ok:webhookReady,
