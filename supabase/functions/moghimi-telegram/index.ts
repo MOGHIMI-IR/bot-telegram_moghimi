@@ -322,7 +322,13 @@ async function healthCheck() {
 }
 
 Deno.serve(async(req:Request)=>{
-  if(req.method==="GET") return await healthCheck();
+  if(req.method==="GET" || req.method==="HEAD") {
+    const result = await healthCheck();
+    if(req.method==="HEAD") {
+      return new Response(null,{status:result.status,headers:result.headers});
+    }
+    return result;
+  }
   if(req.method!=="POST") return json({ok:false},405);
   if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||ADMINS.size===0) return json({ok:false,code:"not_configured"},503);
   if(req.headers.get("x-telegram-bot-api-secret-token")!==HOOK_SECRET) return json({ok:false},401);
