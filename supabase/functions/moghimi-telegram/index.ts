@@ -10,6 +10,7 @@ const DB_KEY = (() => {
 const ADMINS = new Set((Deno.env.get("TELEGRAM_ADMIN_IDS") ?? "").split(",").map(s => s.trim()).filter(Boolean));
 const CARD = Deno.env.get("PAYMENT_CARD_NUMBER") ?? "";
 const TG = "https://api.telegram.org/bot" + TOKEN;
+const EXPECTED_BOT_USERNAME = "Moghimi_vpn_bot";
 const json = (v: unknown, status=200) => new Response(JSON.stringify(v),{status,headers:{"content-type":"application/json"}});
 const html = (s: string) => s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
 function dbHeaders() {
@@ -294,7 +295,7 @@ async function healthCheck() {
     // Also verify that the Telegram token remains valid.
     await db("bot_user_states?select=telegram_user_id&limit=1");
     const me = await tg("getMe",{});
-    if(!me?.is_bot || !me?.username) throw new Error("telegram_bot_check_failed");
+    if(!me?.is_bot || !me?.username || String(me.username).toLowerCase() !== EXPECTED_BOT_USERNAME.toLowerCase()) throw new Error("telegram_bot_check_failed");
     // Restore Telegram's webhook to this fixed official endpoint if missing.
     const expectedWebhook = (URL.endsWith("/") ? URL.slice(0,-1) : URL) + "/functions/v1/moghimi-telegram";
     let webhook = await tg("getWebhookInfo",{});
