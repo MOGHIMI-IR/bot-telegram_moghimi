@@ -277,17 +277,25 @@ async function userMessage(msg:any,st:any) {
   return send(chat,"برای شروع /start را بزن.",mainMenu());
 }
 
+const healthJson = (value:unknown,status=200) => new Response(JSON.stringify(value),{
+  status,
+  headers:{
+    "content-type":"application/json",
+    "cache-control":"no-store",
+    "access-control-allow-origin":"https://moghimi-ir.github.io"
+  }
+});
 async function healthCheck() {
   if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||ADMINS.size===0) {
-    return json({ok:false,code:"not_configured"},503);
+    return healthJson({ok:false,code:"not_configured"},503);
   }
   try {
-    // This small, read-only request also counts as database activity for
-    // Supabase Free projects, helping prevent inactivity pausing.
+    // A tiny read-only database request counts as user DB activity.
+    // Also verify that the Telegram token remains valid.
     await db("bot_user_states?select=telegram_user_id&limit=1");
     const me = await tg("getMe",{});
     if(!me?.is_bot || !me?.username) throw new Error("telegram_bot_check_failed");
-    return json({
+    return healthJson({
       ok:true,
       service:"moghimi-telegram",
       database:"ok",
@@ -296,7 +304,7 @@ async function healthCheck() {
     });
   } catch(e) {
     console.error("moghimi-health",e instanceof Error?e.message:"health_check_failed");
-    return json({ok:false,code:"health_check_failed"},503);
+    return healthJson({ok:false,code:"health_check_failed"},503);
   }
 }
 
