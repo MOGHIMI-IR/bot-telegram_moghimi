@@ -40,6 +40,42 @@ supabase functions deploy moghimi-telegram --project-ref qaxiunpklkbgfjwmpwfp --
 
 تابع در مسیر `supabase/functions/moghimi-telegram/index.ts` قرار دارد. قبل از انتشار، همهٔ Secrets بالا را در Supabase تنظیم کن.
 
+## راه‌اندازی روی ویندوز (قدم‌به‌قدم)
+
+اگر با خط فرمان آشنا نیستی، این کارها را به‌ترتیب انجام بده:
+
+1. از صفحهٔ همین مخزن، روی **Code → Download ZIP** بزن و فایل را Extract کن.
+2. Node.js نسخهٔ ۲۰ یا جدیدتر را نصب کن. برای بررسی، PowerShell را باز کن و بنویس `node -v` و `npm -v`.
+3. در File Explorer وارد پوشهٔ استخراج‌شدهٔ `bot-telegram_moghimi` شو؛ همان پوشه‌ای که فولدر `supabase` و فایل `README.md` را دارد.
+4. داخل فضای خالی همان پوشه راست‌کلیک کن و **Open in Terminal** را بزن. مطمئن شو مسیر PowerShell به ریشهٔ همین مخزن اشاره می‌کند.
+5. دستورهای زیر را یکی‌یکی در همان PowerShell اجرا کن:
+
+```powershell
+npm install supabase --save-dev
+npx supabase login
+npx supabase link --project-ref qaxiunpklkbgfjwmpwfp
+npx supabase functions deploy moghimi-telegram --no-verify-jwt
+```
+
+- دستور اول ابزار Supabase CLI را در همین پوشه نصب می‌کند.
+- دستور دوم مرورگر را برای ورود به حساب Supabase باز می‌کند.
+- دستور سوم این پوشه را به پروژهٔ درست وصل می‌کند.
+- دستور چهارم کد بات را از همین مخزن به پروژه منتشر می‌کند.
+
+**دستور deploy را در PowerShell ویندوز اجرا کن، نه در SQL Editor سایت Supabase و نه داخل چت تلگرام.** فایل تنظیم پروژه در `supabase/config.toml` قرار دارد و لازم نیست `supabase init` اجرا کنی.
+
+## واردکردن چهار مقدار محرمانه در Supabase
+
+در داشبورد پروژه به **Edge Functions → Secrets** برو و این چهار مورد را جداگانه با کلید و مقدار ثبت کن. لینک صفحه:
+https://supabase.com/dashboard/project/qaxiunpklkbgfjwmpwfp/functions/secrets
+
+- `TELEGRAM_BOT_TOKEN`: از گفت‌وگوی رسمی [@BotFather](https://t.me/BotFather) توکن تازه بگیر. توکن قبلی که در گفت‌وگو فرستاده شده را باطل کن و دوباره استفاده نکن.
+- `TELEGRAM_WEBHOOK_SECRET`: خودت یک رمز تصادفی و طولانی، حداقل ۳۲ کاراکتر، بساز. این رمز باید برای تنظیم وب‌هوک هم عیناً استفاده شود.
+- `TELEGRAM_ADMIN_IDS`: شناسهٔ عددی اکانت مدیران تلگرام. می‌توانی با [@userinfobot](https://t.me/userinfobot) شناسهٔ خودت را پیدا کنی. برای چند مدیر، شناسه‌ها را با کاما جدا کن؛ مثل `12345678,87654321`.
+- `PAYMENT_CARD_NUMBER`: شمارهٔ کارت بانکی مقصدی که باید کاربران هزینهٔ اشتراک را به آن واریز کنند.
+
+متغیرهای `SUPABASE_URL` و کلید داخلی سرویس را خود Supabase در محیط تابع فراهم می‌کند؛ آن‌ها را از جای دیگری کپی نکن و در APK یا مخزن عمومی قرار نده. پس از ذخیرهٔ Secrets، تابع مقادیر جدید را می‌خواند و برای خود Secrets نیازی به deploy دوباره نیست.
+
 ## ثبت وب‌هوک تلگرام
 
 پس از تولید و تنظیم توکن و secret جدید، در ترمینال امن خود:
