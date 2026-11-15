@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.keystore
+.DS_Store
