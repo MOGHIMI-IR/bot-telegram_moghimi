@@ -30,6 +30,19 @@ Secrets موردنیاز:
 
 نمونهٔ نام متغیرها در `.env.example` آمده و مقادیر آن عمداً خالی‌اند.
 
+برای ساختن مقدار تصادفی `TELEGRAM_WEBHOOK_SECRET` در PowerShell ویندوز، این چند خط را اجرا کن و خروجی را فقط در Supabase Secrets وارد کن:
+
+```powershell
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$secret = -join ($bytes | ForEach-Object { $_.ToString("x2") })
+$rng.Dispose()
+$secret
+```
+
+مقدار `PAYMENT_CARD_NUMBER` کارت مقصد دریافت پول اشتراک است؛ آن را با شمارهٔ کارت بخش حمایت داخل برنامه اشتباه نگیر، مگر اینکه عمداً هر دو را یکی انتخاب کرده باشی. شناسهٔ مدیر هم عددی است که رباتی مثل `@userinfobot` نشان می‌دهد، نه نام کاربری با علامت @.
+
 ## انتشار تابع
 
 با Supabase CLI و پروژهٔ درست لینک‌شده:
