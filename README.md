@@ -108,6 +108,24 @@ curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
 
 در پاسخ باید URL همین Edge Function دیده شود و خطای webhook نداشته باشی. تا وقتی توکن جدید و Secrets تنظیم نشده‌اند، webhook را با توکن افشاشده فعال نکن.
 
+### دستور آماده برای PowerShell ویندوز
+
+این دستورها را بعد از deploy در PowerShell اجرا کن. وقتی پرسید، توکن تازهٔ بات و همان secret که در Supabase ذخیره کردی را وارد کن:
+
+```powershell
+$botToken = Read-Host "توکن تازه بات"
+$webhookSecret = Read-Host "Webhook secret"
+$body = @{
+  url = "https://qaxiunpklkbgfjwmpwfp.supabase.co/functions/v1/moghimi-telegram"
+  secret_token = $webhookSecret
+  allowed_updates = '["message","callback_query"]'
+}
+Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$botToken/setWebhook" -Body $body
+Invoke-RestMethod -Uri "https://api.telegram.org/bot$botToken/getWebhookInfo"
+```
+
+در پاسخ دستور اول باید `ok = True` باشد. در خروجی دستور دوم، مقدار `url` باید آدرس تابع بالا باشد و `last_error_message` خالی باشد.
+
 ## روند خرید و فعال‌سازی اشتراک
 
 1. کاربر در بات `/start` را می‌زند و «خرید اشتراک» را انتخاب می‌کند.
