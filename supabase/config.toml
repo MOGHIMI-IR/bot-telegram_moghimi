@@ -1,0 +1,4 @@
+project_id = "qaxiunpklkbgfjwmpwfp"
+
+[functions.moghimi-telegram]
+verify_jwt = false
