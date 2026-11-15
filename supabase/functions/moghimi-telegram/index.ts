@@ -277,8 +277,31 @@ async function userMessage(msg:any,st:any) {
   return send(chat,"برای شروع /start را بزن.",mainMenu());
 }
 
+async function healthCheck() {
+  if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||ADMINS.size===0) {
+    return json({ok:false,code:"not_configured"},503);
+  }
+  try {
+    // This small, read-only request also counts as database activity for
+    // Supabase Free projects, helping prevent inactivity pausing.
+    await db("bot_user_states?select=telegram_user_id&limit=1");
+    const me = await tg("getMe",{});
+    if(!me?.is_bot || !me?.username) throw new Error("telegram_bot_check_failed");
+    return json({
+      ok:true,
+      service:"moghimi-telegram",
+      database:"ok",
+      telegram:"ok",
+      bot_username:me.username
+    });
+  } catch(e) {
+    console.error("moghimi-health",e instanceof Error?e.message:"health_check_failed");
+    return json({ok:false,code:"health_check_failed"},503);
+  }
+}
+
 Deno.serve(async(req:Request)=>{
-  if(req.method==="GET") return json({ok:true,service:"moghimi-telegram"});
+  if(req.method==="GET") return await healthCheck();
   if(req.method!=="POST") return json({ok:false},405);
   if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||ADMINS.size===0) return json({ok:false,code:"not_configured"},503);
   if(req.headers.get("x-telegram-bot-api-secret-token")!==HOOK_SECRET) return json({ok:false},401);
