@@ -309,21 +309,32 @@ async function healthCheck() {
       },503);
     }
     let webhook = await tg("getWebhookInfo",{});
+    let webhookSetAttempted = false;
     if(webhook?.url !== expectedWebhook || webhook?.last_error_message) {
       await tg("setWebhook",{
         url:expectedWebhook,
         secret_token:HOOK_SECRET,
         allowed_updates:["message","callback_query"]
       });
+      webhookSetAttempted = true;
       webhook = await tg("getWebhookInfo",{});
     }
-    const webhookReady = webhook?.url === expectedWebhook && !webhook?.last_error_message;
+    const webhookUrlMatches = webhook?.url === expectedWebhook;
+    const webhookLastError = typeof webhook?.last_error_message === "string"
+      ? webhook.last_error_message : null;
+    const webhookReady = webhookUrlMatches && !webhookLastError;
     return healthJson({
       ok:webhookReady,
       service:"moghimi-telegram",
       database:"ok",
       telegram:"ok",
       webhook:webhookReady ? "ok" : "not_ready",
+      webhook_url:webhook?.url ?? null,
+      webhook_url_matches:webhookUrlMatches,
+      webhook_pending_update_count: Number(webhook?.pending_update_count ?? 0),
+      webhook_last_error_date: webhook?.last_error_date ?? null,
+      webhook_last_error_message: webhookLastError,
+      webhook_set_attempted:webhookSetAttempted,
       bot_username:me.username
     },webhookReady ? 200 : 503);
   } catch(e) {
