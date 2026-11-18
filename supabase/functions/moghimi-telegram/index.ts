@@ -67,7 +67,7 @@ function mainMenu() {
 }
 function plansMenu() {
   return {inline_keyboard:[
-    [{text:"۱ ماهه · ۱۰ گیگ · ۱۰۰٬۰۰۰ تومان",callback_data:"fixed"}],
+    [{text:"20 روزه · ۱۰ گیگ · 60٬000 تومان",callback_data:"fixed"}],
     [{text:"حجم و مدت دلخواه",callback_data:"custom"}],
     [{text:"بازگشت",callback_data:"home"}]
   ]};
