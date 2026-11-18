@@ -193,10 +193,10 @@ async function callback(update:any, adminIds:Set<string>) {
 }
 async function adminMessage(msg:any,st:any) {
   const user=msg.from, chat=msg.chat.id, text=String(msg.text??msg.caption??"").trim();
-  const command = text.toLowerCase().replace(/@\\S+$/, "").split(/\\s+/)[0];
+  const command = text.toLowerCase().replace(/@\S+$/, "").split(/\s+/)[0];
   if(command === "/start" || command === "/help") {
     await setState(user.id,chat,"idle");
-    return send(chat,"پنل مدیریت Moghimi V2Ray:\\n/orders — سفارش‌های در انتظار\\n/threads — گفت‌وگوهای باز پشتیبانی");
+    return send(chat,"پنل مدیریت Moghimi V2Ray:\n/orders — سفارش‌های در انتظار\n/threads — گفت‌وگوهای باز پشتیبانی");
   }
   if(st?.state==="admin_quote") {
     const amount=Number(text.replace(/[,\s٬]/g,""));
@@ -242,7 +242,7 @@ async function adminMessage(msg:any,st:any) {
 }
 async function userMessage(msg:any,st:any) {
   const user=msg.from, chat=msg.chat.id, text=String(msg.text??msg.caption??"").trim();
-  const command = text.toLowerCase().replace(/@\\S+$/, "").split(/\\s+/)[0];
+  const command = text.toLowerCase().replace(/@\S+$/, "").split(/\s+/)[0];
   if(command==="/start") {
     await setState(user.id,chat,"idle");
     return send(chat,"سلام 👋\nبه بات رسمی Moghimi V2Ray خوش آمدی.\nیکی از گزینه‌ها را انتخاب کن:",mainMenu());
@@ -292,7 +292,7 @@ async function userMessage(msg:any,st:any) {
       return send(chat,"این رسید قبلاً ثبت شده یا سفارش دیگر در انتظار پرداخت نیست. برای سفارش تازه /buy را بزن.");
     }
     const adminIds=await getAdminIds();
-    const notice=await sendAdmins("📥 رسید پرداخت جدید\\nسفارش: <code>"+orderId+"</code>\\nکاربر: @"+html(o.telegram_username)+"\\nتلفن: "+o.phone+"\\nمبلغ: "+Number(o.amount_toman).toLocaleString("en-US")+" تومان",receiptButtons(orderId));
+    const notice=await sendAdmins("📥 رسید پرداخت جدید\nسفارش: <code>"+orderId+"</code>\nکاربر: @"+html(o.telegram_username)+"\nتلفن: "+o.phone+"\nمبلغ: "+Number(o.amount_toman).toLocaleString("en-US")+" تومان",receiptButtons(orderId));
     let fileDelivered=0;
     for(const admin of adminIds) {
       try {
@@ -338,7 +338,7 @@ async function userMessage(msg:any,st:any) {
     const adminIds=await getAdminIds();
     for(const admin of adminIds) {
       try {
-        await send(admin,"💬 پیام پشتیبانی\\nکاربر: @"+html(user.username??String(user.id))+"\\n"+html(text).slice(0,1800),
+        await send(admin,"💬 پیام پشتیبانی\nکاربر: @"+html(user.username??String(user.id))+"\n"+html(text).slice(0,1800),
           {inline_keyboard:[[{text:"↩️ پاسخ",callback_data:"reply:"+th.id},{text:"🔒 بستن",callback_data:"close:"+th.id}]]});
         if(photo) await tg("sendPhoto",{chat_id:admin,photo});
         else if(doc) await tg("sendDocument",{chat_id:admin,document:doc});
