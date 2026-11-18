@@ -297,7 +297,17 @@ async function healthCheck() {
     const me = await tg("getMe",{});
     if(!me?.is_bot || !me?.username || String(me.username).toLowerCase() !== EXPECTED_BOT_USERNAME.toLowerCase()) throw new Error("telegram_bot_check_failed");
     // Restore Telegram's webhook to this fixed official endpoint if missing.
-    const expectedWebhook = (URL.endsWith("/") ? URL.slice(0,-1) : URL) + "/functions/v1/moghimi-telegram";
+    const expectedWebhook = "https://hxfnoaeyjnkecegpppcy.supabase.co/functions/v1/moghimi-telegram-router";
+    const routerHealthResponse = await fetch(expectedWebhook);
+    let routerHealth: any = null;
+    try { routerHealth = await routerHealthResponse.json(); } catch {}
+    if (!routerHealthResponse.ok || !routerHealth?.ok || !routerHealth?.mobile_forward_configured) {
+      return healthJson({
+        ok:false,service:"moghimi-telegram",database:"ok",telegram:"ok",
+        webhook:"router_not_ready",router_database:routerHealth?.windows_database??false,
+        mobile_forward:routerHealth?.mobile_forward_configured??false
+      },503);
+    }
     let webhook = await tg("getWebhookInfo",{});
     if(webhook?.url !== expectedWebhook || webhook?.last_error_message) {
       await tg("setWebhook",{
