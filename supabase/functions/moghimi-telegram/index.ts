@@ -7,7 +7,12 @@ const DB_KEY = (() => {
   try { return JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}").default ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""; }
   catch { return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""; }
 })();
-const ADMINS = new Set((Deno.env.get("TELEGRAM_ADMIN_IDS") ?? "").split(",").map(s => s.trim()).filter(Boolean));
+const REVOKED_ADMIN_IDS = new Set(["8400006272"]);
+const ADMINS = new Set(
+  (Deno.env.get("TELEGRAM_ADMIN_IDS") ?? "")
+    .split(",").map(s => s.trim()).filter(Boolean)
+    .filter(id => !REVOKED_ADMIN_IDS.has(id))
+);
 const CARD = Deno.env.get("PAYMENT_CARD_NUMBER") ?? "";
 const TG = "https://api.telegram.org/bot" + TOKEN;
 const EXPECTED_BOT_USERNAME = "Moghimi_vpn_bot";
@@ -31,6 +36,19 @@ async function tg(method:string,data:Record<string,unknown>) {
 }
 async function send(chat:number|string,text:string,markup?:unknown) {
   return tg("sendMessage",{chat_id:chat,text,parse_mode:"HTML",...(markup?{reply_markup:markup}:{})});
+}
+async function getAdminIds(): Promise<Set<string>> {
+  const admins = new Set([...ADMINS].filter(id => !REVOKED_ADMIN_IDS.has(id)));
+  try {
+    const rows = await db("telegram_admins?enabled=eq.true&select=telegram_user_id");
+    for (const row of rows ?? []) {
+      const id = String(row.telegram_user_id);
+      if (!REVOKED_ADMIN_IDS.has(id)) admins.add(id);
+    }
+  } catch (error) {
+    console.error("admin_lookup", error instanceof Error ? error.message : "failed");
+  }
+  return admins;
 }
 async function setState(id:number,chat:number,state:string,data:Record<string,unknown>={}) {
   await db("bot_user_states?on_conflict=telegram_user_id","POST",
@@ -58,7 +76,14 @@ function code() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
 }
 async function sendAdmins(text:string,markup?:unknown) {
-  for(const admin of ADMINS) { try { await send(admin,text,markup); } catch(e) { console.error("admin_notify",String(e)); } }
+  const admins = await getAdminIds();
+  let delivered = 0;
+  for(const admin of admins) {
+    try { await send(admin,text,markup); delivered++; }
+    catch(e) { console.error("admin_notify",String(e)); }
+  }
+  console.log("mobile_admin_notify_result", JSON.stringify({ total:admins.size, delivered }));
+  return { total:admins.size, delivered };
 }
 function receiptButtons(id:string) {
   return {inline_keyboard:[
@@ -98,7 +123,7 @@ async function createOrder(user:any,phone:string,state:any) {
       {inline_keyboard:[[{text:"💰 تعیین مبلغ",callback_data:"quote:"+o.id}]]});
   }
 }
-async function callback(update:any) {
+async function callback(update:any, adminIds:Set<string>) {
   const q=update.callback_query, user=q.from, chat=q.message?.chat?.id??user.id, d=String(q.data??"");
   await tg("answerCallbackQuery",{callback_query_id:q.id});
   if(d==="home") return send(chat,"به بات Moghimi V2Ray خوش آمدی. یکی از گزینه‌ها را انتخاب کن:",mainMenu());
@@ -122,7 +147,7 @@ async function callback(update:any) {
       {inline_keyboard:[[{text:"↩️ پاسخ",callback_data:"reply:"+th.id},{text:"🔒 بستن",callback_data:"close:"+th.id}]]});
     return;
   }
-  if(!ADMINS.has(String(user.id))) return;
+  if(!adminIds.has(String(user.id))) return;
   if(d.startsWith("quote:")) {
     await setState(user.id,chat,"admin_quote",{order_id:d.slice(6)});
     return send(chat,"مبلغ را به تومان و فقط به‌صورت عدد وارد کن.");
@@ -139,6 +164,7 @@ async function callback(update:any) {
       duration_days:o.plan_days,expires_at:new Date(Date.now()+7*86400000).toISOString()
     },"return=representation");
     await db("purchase_orders?id=eq."+id,"PATCH",{status:"approved",reviewed_at:new Date().toISOString(),reviewed_by:user.id,activation_code_id:codes[0].id},"return=minimal");
+    await setState(Number(o.telegram_user_id), Number(o.telegram_chat_id), "idle");
     await send(o.telegram_chat_id,"پرداخت تأیید شد ✅\nکد فعال‌سازی:\n<code>"+raw+"</code>\n\nدر برنامه، صفحه پروفایل، کد را ثبت کن. کد یک‌بارمصرف است.");
     return send(chat,"تأیید شد و کد فعال‌سازی برای کاربر ارسال شد.");
   }
@@ -146,6 +172,7 @@ async function callback(update:any) {
     const id=d.slice(7), rows=await db("purchase_orders?id=eq."+id+"&select=*"), o=rows[0];
     if(o?.status==="receipt_submitted") {
       await db("purchase_orders?id=eq."+id,"PATCH",{status:"rejected",reviewed_at:new Date().toISOString(),reviewed_by:user.id},"return=minimal");
+      await setState(Number(o.telegram_user_id), Number(o.telegram_chat_id), "idle");
       await send(o.telegram_chat_id,"رسید تأیید نشد. برای پیگیری با پشتیبانی پیام بده.");
       await send(chat,"رسید رد شد.");
     }
@@ -166,6 +193,11 @@ async function callback(update:any) {
 }
 async function adminMessage(msg:any,st:any) {
   const user=msg.from, chat=msg.chat.id, text=String(msg.text??msg.caption??"").trim();
+  const command = text.toLowerCase().replace(/@\\S+$/, "").split(/\\s+/)[0];
+  if(command === "/start" || command === "/help") {
+    await setState(user.id,chat,"idle");
+    return send(chat,"پنل مدیریت Moghimi V2Ray:\\n/orders — سفارش‌های در انتظار\\n/threads — گفت‌وگوهای باز پشتیبانی");
+  }
   if(st?.state==="admin_quote") {
     const amount=Number(text.replace(/[,\s٬]/g,""));
     if(!Number.isSafeInteger(amount)||amount<1000||amount>1000000000) return send(chat,"مبلغ معتبر نیست.");
@@ -191,7 +223,7 @@ async function adminMessage(msg:any,st:any) {
     await db("support_threads?id=eq."+id,"PATCH",{last_message_at:new Date().toISOString()},"return=minimal");
     await setState(user.id,chat,"idle"); return send(chat,"پاسخ ارسال شد.");
   }
-  if(text==="/admin"||text==="/orders") {
+  if(["/admin","/orders","/pending","/listorders"].includes(command)) {
     const orders=await db("purchase_orders?status=in.(awaiting_quote,awaiting_payment,receipt_submitted)&select=id,telegram_username,phone,plan_bytes,plan_days,amount_toman,status&order=created_at.desc&limit=20");
     if(!orders.length) return send(chat,"سفارش بازی نیست.");
     for(const o of orders) {
@@ -200,7 +232,7 @@ async function adminMessage(msg:any,st:any) {
     }
     return;
   }
-  if(text==="/threads") {
+  if(["/threads","/support","/listthreads"].includes(command)) {
     const threads=await db("support_threads?status=eq.open&select=id,telegram_user_id,telegram_username&order=last_message_at.desc&limit=20");
     for(const th of threads) await send(chat,"مکالمه <code>"+th.id+"</code>\n@"+html(th.telegram_username??String(th.telegram_user_id)),
       {inline_keyboard:[[{text:"پاسخ",callback_data:"reply:"+th.id},{text:"بستن",callback_data:"close:"+th.id}]]});
@@ -210,8 +242,17 @@ async function adminMessage(msg:any,st:any) {
 }
 async function userMessage(msg:any,st:any) {
   const user=msg.from, chat=msg.chat.id, text=String(msg.text??msg.caption??"").trim();
-  if(text==="/start") return send(chat,"سلام 👋\nبه بات رسمی Moghimi V2Ray خوش آمدی.\nیکی از گزینه‌ها را انتخاب کن:",mainMenu());
+  const command = text.toLowerCase().replace(/@\\S+$/, "").split(/\\s+/)[0];
+  if(command==="/start") {
+    await setState(user.id,chat,"idle");
+    return send(chat,"سلام 👋\nبه بات رسمی Moghimi V2Ray خوش آمدی.\nیکی از گزینه‌ها را انتخاب کن:",mainMenu());
+  }
   await expireOrders(user.id);
+
+  if(["/buy","/new","/plans"].includes(command)) {
+    await setState(user.id,chat,"idle");
+    return send(chat,"طرح اشتراک را انتخاب کن:",plansMenu());
+  }
 
   if(st?.state==="days") {
     const days=Number(text); if(!Number.isInteger(days)||days<1||days>3650) return send(chat,"مدت باید بین ۱ تا ۳۶۵۰ روز باشد.");
@@ -240,15 +281,46 @@ async function userMessage(msg:any,st:any) {
     }
     const photo=msg.photo?.at(-1)?.file_id, doc=msg.document?.file_id, file=photo??doc;
     if(!file) return send(chat,"لطفاً عکس فیش را به‌صورت عکس یا فایل ارسال کن.");
-    await db("purchase_orders?id=eq."+orderId,"PATCH",{status:"receipt_submitted",receipt_file_id:file,receipt_message_id:msg.message_id,receipt_submitted_at:new Date().toISOString()},"return=minimal");
-    await sendAdmins("📥 رسید پرداخت جدید\nسفارش: <code>"+orderId+"</code>\nکاربر: @"+html(o.telegram_username)+"\nتلفن: "+o.phone+"\nمبلغ: "+Number(o.amount_toman).toLocaleString("en-US")+" تومان",receiptButtons(orderId));
-    for(const admin of ADMINS) {
-      try { if(photo) await tg("sendPhoto",{chat_id:admin,photo,caption:"رسید سفارش "+orderId}); else await tg("sendDocument",{chat_id:admin,document:doc,caption:"رسید سفارش "+orderId}); } catch {}
+    const submittedRows=await db(
+      "purchase_orders?id=eq."+orderId+"&telegram_user_id=eq."+user.id+"&status=eq.awaiting_payment",
+      "PATCH",
+      {status:"receipt_submitted",receipt_file_id:file,receipt_message_id:msg.message_id,receipt_submitted_at:new Date().toISOString()},
+      "return=representation"
+    );
+    if(!submittedRows?.[0]) {
+      await setState(user.id,chat,"idle");
+      return send(chat,"این رسید قبلاً ثبت شده یا سفارش دیگر در انتظار پرداخت نیست. برای سفارش تازه /buy را بزن.");
     }
-    await setState(user.id,chat,"receipt_submitted",{order_id:orderId});
-    return send(chat,"رسید دریافت شد ✅\nحداکثر تا یک روز کاری بررسی می‌شود و پس از تأیید، کد فعال‌سازی ارسال خواهد شد.");
+    const adminIds=await getAdminIds();
+    const notice=await sendAdmins("📥 رسید پرداخت جدید\\nسفارش: <code>"+orderId+"</code>\\nکاربر: @"+html(o.telegram_username)+"\\nتلفن: "+o.phone+"\\nمبلغ: "+Number(o.amount_toman).toLocaleString("en-US")+" تومان",receiptButtons(orderId));
+    let fileDelivered=0;
+    for(const admin of adminIds) {
+      try {
+        if(photo) await tg("sendPhoto",{chat_id:admin,photo,caption:"رسید سفارش "+orderId});
+        else await tg("sendDocument",{chat_id:admin,document:doc,caption:"رسید سفارش "+orderId});
+        fileDelivered++;
+      } catch(e) { console.error("receipt_file_notify_failed",String(e)); }
+    }
+    await setState(user.id,chat,"idle");
+    if(notice.delivered===0) {
+      return send(chat,"رسید ذخیره شد، اما اعلان به مدیر تحویل نشد. مدیر باید ابتدا ربات را باز کند و /start بزند؛ سپس /orders را برای مشاهده سفارش‌ها اجرا کند.");
+    }
+    if(fileDelivered===0) {
+      return send(chat,"رسید ثبت شد، اما فایل آن به مدیر تحویل نشد. لطفاً رسید را در پشتیبانی هم ارسال کن.");
+    }
+    return send(chat,"رسید دریافت شد ✅ برای بررسی به مدیر ارسال شد. کد فعال‌سازی پس از تأیید همین‌جا ارسال می‌شود. برای خرید جدید /buy را بزن.");
   }
-  if(st?.state==="receipt_submitted") return send(chat,"رسیدت در صف بررسی است. پس از تأیید، کد فعال‌سازی را همین‌جا می‌فرستیم.");
+  if(st?.state==="receipt_submitted") {
+    const orderId=String(st.data?.order_id??"");
+    const rows=orderId ? await db("purchase_orders?id=eq."+encodeURIComponent(orderId)+"&telegram_user_id=eq."+user.id+"&select=status") : [];
+    const status=rows?.[0]?.status;
+    if(status==="receipt_submitted")
+      return send(chat,"رسیدت هنوز در صف بررسی است. برای جلوگیری از سفارش تکراری، تا اعلام نتیجه منتظر بمان.");
+    await setState(user.id,chat,"idle");
+    if(status==="approved") return send(chat,"پرداخت سفارش قبلی تأیید شده و کد فعال‌سازی ارسال شده است. برای خرید جدید /start را بزن.");
+    if(status==="rejected") return send(chat,"رسید سفارش قبلی رد شده است. برای ثبت سفارش جدید /start را بزن یا با پشتیبانی تماس بگیر.");
+    return send(chat,"وضعیت سفارش قبلی دیگر فعال نیست. برای شروع مجدد /start را بزن.",mainMenu());
+  }
 
   if(text==="/close") {
     const th=await activeThread(user.id);
@@ -263,15 +335,16 @@ async function userMessage(msg:any,st:any) {
     const file=photo??doc??video??voice??null, type=photo?"photo":doc?"document":video?"video":voice?"voice":"text";
     await db("support_messages","POST",{thread_id:th.id,sender_kind:"user",sender_telegram_id:user.id,message_type:type,message_text:text||null,telegram_file_id:file,telegram_message_id:msg.message_id},"return=minimal");
     await db("support_threads?id=eq."+th.id,"PATCH",{last_message_at:new Date().toISOString()},"return=minimal");
-    for(const admin of ADMINS) {
+    const adminIds=await getAdminIds();
+    for(const admin of adminIds) {
       try {
-        await send(admin,"💬 پیام پشتیبانی\nکاربر: @"+html(user.username??String(user.id))+"\n"+html(text).slice(0,1800),
+        await send(admin,"💬 پیام پشتیبانی\\nکاربر: @"+html(user.username??String(user.id))+"\\n"+html(text).slice(0,1800),
           {inline_keyboard:[[{text:"↩️ پاسخ",callback_data:"reply:"+th.id},{text:"🔒 بستن",callback_data:"close:"+th.id}]]});
         if(photo) await tg("sendPhoto",{chat_id:admin,photo});
         else if(doc) await tg("sendDocument",{chat_id:admin,document:doc});
         else if(video) await tg("sendVideo",{chat_id:admin,video});
         else if(voice) await tg("sendVoice",{chat_id:admin,voice});
-      } catch {}
+      } catch(e) { console.error("support_admin_notify_failed",String(e)); }
     }
     return send(chat,"پیامت به پشتیبانی ارسال شد ✅");
   }
@@ -287,7 +360,8 @@ const healthJson = (value:unknown,status=200) => new Response(JSON.stringify(val
   }
 });
 async function healthCheck() {
-  if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||ADMINS.size===0) {
+  const adminIds = await getAdminIds();
+  if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||adminIds.size===0) {
     return healthJson({ok:false,code:"not_configured"},503);
   }
   try {
@@ -352,14 +426,16 @@ Deno.serve(async(req:Request)=>{
     return result;
   }
   if(req.method!=="POST") return json({ok:false},405);
-  if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD||ADMINS.size===0) return json({ok:false,code:"not_configured"},503);
+  if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD) return json({ok:false,code:"not_configured"},503);
   if(req.headers.get("x-telegram-bot-api-secret-token")!==HOOK_SECRET) return json({ok:false},401);
   try {
     const u=await req.json();
+    const adminIds=await getAdminIds();
+    if(adminIds.size===0) return json({ok:false,code:"admins_not_configured"},503);
     if(u.callback_query) {
-      await callback(u);
+      await callback(u,adminIds);
     } else if(u.message) {
-      const m=u.message, admin=ADMINS.has(String(m.from?.id));
+      const m=u.message, admin=adminIds.has(String(m.from?.id));
       const st=await getState(m.from.id);
       if(admin) await adminMessage(m,st);
       else await userMessage(m,st);
