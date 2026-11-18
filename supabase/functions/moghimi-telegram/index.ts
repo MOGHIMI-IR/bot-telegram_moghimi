@@ -310,7 +310,7 @@ async function healthCheck() {
     }
     let webhook = await tg("getWebhookInfo",{});
     let webhookSetAttempted = false;
-    if(webhook?.url !== expectedWebhook || webhook?.last_error_message) {
+    if(webhook?.url !== expectedWebhook) {
       await tg("setWebhook",{
         url:expectedWebhook,
         secret_token:HOOK_SECRET,
@@ -322,7 +322,7 @@ async function healthCheck() {
     const webhookUrlMatches = webhook?.url === expectedWebhook;
     const webhookLastError = typeof webhook?.last_error_message === "string"
       ? webhook.last_error_message : null;
-    const webhookReady = webhookUrlMatches && !webhookLastError;
+    const webhookReady = webhookUrlMatches;
     return healthJson({
       ok:webhookReady,
       service:"moghimi-telegram",
