@@ -98,7 +98,7 @@ function receiptButtons(id:string) {
 }
 async function orderPayment(order:any) {
   await send(order.telegram_chat_id,
-    "سفارش شما ثبت شد.\n\nنام کاربری: <b>@"+html(order.telegram_username)+"</b>\nمدت: <b>"+order.plan_days+" روز</b>\nحجم: <b>"+(Number(order.plan_bytes)/1073741824).toFixed(2)+" گیگابایت</b>\nمبلغ: <b>"+Number(order.amount_toman).toLocaleString("en-US")+" تومان</b>\n\nشماره کارت:\n<code>"+CARD+"</code>\n\nپس از واریز، تصویر فیش را همین‌جا ارسال کن.\nمهلت پرداخت ۱۲ ساعت است؛ بعد از آن سفارش منقضی می‌شود.");
+    "<b>✅ سفارش شما ثبت شد</b>\n\nنام کاربری: <b>@"+html(order.telegram_username)+"</b>\nمدت: <b>"+order.plan_days+" روز</b>\nحجم: <b>"+(Number(order.plan_bytes)/1073741824).toFixed(2)+" گیگابایت</b>\nمبلغ قابل پرداخت: <b>"+Number(order.amount_toman).toLocaleString("en-US")+" تومان</b>\n\n<b>شماره کارت مقصد:</b>\n<code>"+CARD+"</code>\n\nپس از واریز، <b>تصویر رسید پرداخت</b> را همین‌جا ارسال کن.\n<b>مهلت پرداخت: ۱۲ ساعت</b>؛ پس از آن سفارش منقضی می‌شود.");
   await setState(Number(order.telegram_user_id),Number(order.telegram_chat_id),"receipt",{order_id:order.id});
 }
 async function expireOrders(userId:number) {
@@ -123,7 +123,7 @@ async function createOrder(user:any,phone:string,state:any) {
   if(data.plan_kind==="fixed") await orderPayment(o);
   else {
     await setState(user.id,user.chat_id,"idle");
-    await send(user.chat_id,"درخواست اشتراک دلخواه ثبت شد؛ مبلغ پس از بررسی به همین‌جا اعلام می‌شود.");
+    await send(user.chat_id,"<b>درخواست اشتراک دلخواه ثبت شد.</b>\nمبلغ پس از بررسی مدیر، در همین گفت‌وگو برایت ارسال می‌شود.",mainMenu());
     await sendAdmins("🧾 درخواست قیمت‌گذاری اشتراک دلخواه\nسفارش: <code>"+o.id+"</code>\nکاربر: @"+html(o.telegram_username)+"\nشماره: "+o.phone+"\nمدت: "+o.plan_days+" روز\nحجم: "+(o.plan_bytes/1073741824).toFixed(2)+" GB",
       {inline_keyboard:[[{text:"💰 تعیین مبلغ",callback_data:"quote:"+o.id}]]});
   }
