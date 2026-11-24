@@ -60,7 +60,6 @@ async function getState(id:number) {
   return r[0]??null;
 }
 function mainMenu() {
-  // Persistent reply keyboard stays visible after every bot response.
   return {
     keyboard:[
       [{text:"🛒 خرید اشتراک"},{text:"💬 ارتباط با پشتیبانی"}],
@@ -73,7 +72,7 @@ function mainMenu() {
 }
 function plansMenu() {
   return {inline_keyboard:[
-    [{text:"20 روزه · ۱۰ گیگ · 60٬000 تومان",callback_data:"fixed"}],
+    [{text:"۱ ماهه · ۱۰ گیگ · ۶۰٬۰۰۰ تومان",callback_data:"fixed"}],
     [{text:"حجم و مدت دلخواه",callback_data:"custom"}],
     [{text:"بازگشت",callback_data:"home"}]
   ]};
@@ -135,7 +134,7 @@ async function callback(update:any, adminIds:Set<string>) {
   if(d==="home") return send(chat,"<b>به بات Moghimi V2Ray خوش آمدی.</b>\nاز منوی پایین یکی از گزینه‌ها را انتخاب کن:",mainMenu());
   if(d==="buy") return send(chat,"<b>🛒 انتخاب طرح اشتراک</b>\nیکی از گزینه‌های زیر را انتخاب کن:",plansMenu());
   if(d==="fixed") {
-    await setState(user.id,chat,"username",{plan_kind:"fixed",plan_days:30,plan_bytes:10*1073741824,amount_toman:100000});
+    await setState(user.id,chat,"username",{plan_kind:"fixed",plan_days:30,plan_bytes:10*1073741824,amount_toman:60000});
     return send(chat,"نام کاربری تلگرامت را دقیق وارد کن (بدون @).");
   }
   if(d==="custom") {
@@ -374,7 +373,7 @@ async function userMessage(msg:any,st:any) {
     }
     return send(chat,"پیامت به پشتیبانی ارسال شد ✅");
   }
-  return send(chat,"برای ادامه از منوی پایین استفاده کن. اگر خواستی از ابتدا شروع کنی، «منوی اصلی» را بزن.",mainMenu());
+  return send(chat,"برای ادامه از منوی پایین استفاده کن. برای بازگشت به ابتدا «منوی اصلی» را انتخاب کن.",mainMenu());
 }
 
 const healthJson = (value:unknown,status=200) => new Response(JSON.stringify(value),{
@@ -397,17 +396,7 @@ async function healthCheck() {
     const me = await tg("getMe",{});
     if(!me?.is_bot || !me?.username || String(me.username).toLowerCase() !== EXPECTED_BOT_USERNAME.toLowerCase()) throw new Error("telegram_bot_check_failed");
     // Restore Telegram's webhook to this fixed official endpoint if missing.
-    const expectedWebhook = "https://hxfnoaeyjnkecegpppcy.supabase.co/functions/v1/moghimi-telegram-router";
-    const routerHealthResponse = await fetch(expectedWebhook);
-    let routerHealth: any = null;
-    try { routerHealth = await routerHealthResponse.json(); } catch {}
-    if (!routerHealthResponse.ok || !routerHealth?.ok || !routerHealth?.mobile_forward_configured) {
-      return healthJson({
-        ok:false,service:"moghimi-telegram",database:"ok",telegram:"ok",
-        webhook:"router_not_ready",
-        mobile_forward:routerHealth?.mobile_forward_configured??false
-      },503);
-    }
+    const expectedWebhook = "https://qaxiunpklkbgfjwmpwfp.supabase.co/functions/v1/moghimi-telegram";
     let webhook = await tg("getWebhookInfo",{});
     let webhookSetAttempted = false;
     if(webhook?.url !== expectedWebhook) {
