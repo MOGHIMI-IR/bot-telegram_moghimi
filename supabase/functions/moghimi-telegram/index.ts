@@ -60,10 +60,16 @@ async function getState(id:number) {
   return r[0]??null;
 }
 function mainMenu() {
-  return {inline_keyboard:[
-    [{text:"🛒 خرید اشتراک",callback_data:"buy"}],
-    [{text:"💬 ارتباط با پشتیبانی",callback_data:"support"}]
-  ]};
+  // Persistent reply keyboard stays visible after every bot response.
+  return {
+    keyboard:[
+      [{text:"🛒 خرید اشتراک"},{text:"💬 ارتباط با پشتیبانی"}],
+      [{text:"🏠 منوی اصلی"}]
+    ],
+    resize_keyboard:true,
+    is_persistent:true,
+    input_field_placeholder:"یک گزینه را انتخاب کن"
+  };
 }
 function plansMenu() {
   return {inline_keyboard:[
@@ -126,8 +132,8 @@ async function createOrder(user:any,phone:string,state:any) {
 async function callback(update:any, adminIds:Set<string>) {
   const q=update.callback_query, user=q.from, chat=q.message?.chat?.id??user.id, d=String(q.data??"");
   await tg("answerCallbackQuery",{callback_query_id:q.id});
-  if(d==="home") return send(chat,"به بات Moghimi V2Ray خوش آمدی. یکی از گزینه‌ها را انتخاب کن:",mainMenu());
-  if(d==="buy") return send(chat,"طرح اشتراک را انتخاب کن:",plansMenu());
+  if(d==="home") return send(chat,"<b>به بات Moghimi V2Ray خوش آمدی.</b>\nاز منوی پایین یکی از گزینه‌ها را انتخاب کن:",mainMenu());
+  if(d==="buy") return send(chat,"<b>🛒 انتخاب طرح اشتراک</b>\nیکی از گزینه‌های زیر را انتخاب کن:",plansMenu());
   if(d==="fixed") {
     await setState(user.id,chat,"username",{plan_kind:"fixed",plan_days:30,plan_bytes:10*1073741824,amount_toman:100000});
     return send(chat,"نام کاربری تلگرامت را دقیق وارد کن (بدون @).");
@@ -243,15 +249,35 @@ async function adminMessage(msg:any,st:any) {
 async function userMessage(msg:any,st:any) {
   const user=msg.from, chat=msg.chat.id, text=String(msg.text??msg.caption??"").trim();
   const command = text.toLowerCase().replace(/@\S+$/, "").split(/\s+/)[0];
-  if(command==="/start") {
+  if(command==="/start" || command==="/menu" || text==="🏠 منوی اصلی") {
     await setState(user.id,chat,"idle");
-    return send(chat,"سلام 👋\nبه بات رسمی Moghimi V2Ray خوش آمدی.\nیکی از گزینه‌ها را انتخاب کن:",mainMenu());
+    return send(chat,"<b>سلام 👋 به بات رسمی Moghimi V2Ray خوش آمدی.</b>\n\nاز منوی پایین، خرید اشتراک یا پشتیبانی را انتخاب کن:",mainMenu());
+  }
+  if(text==="🛒 خرید اشتراک") {
+    await setState(user.id,chat,"idle");
+    return send(chat,"<b>🛒 انتخاب طرح اشتراک</b>\nیکی از روش‌های زیر را انتخاب کن:",plansMenu());
+  }
+  if(text==="💬 ارتباط با پشتیبانی") {
+    const old=await activeThread(user.id);
+    if(old) {
+      await setState(user.id,chat,"support",{thread_id:old.id});
+      return send(chat,"<b>💬 گفت‌وگوی پشتیبانی فعال است.</b>\nپیام یا فایل خودت را ارسال کن. برای پایان مکالمه /close را بفرست.",mainMenu());
+    }
+    const rows=await db("support_threads","POST",{
+      telegram_user_id:user.id,telegram_chat_id:chat,
+      telegram_username:user.username??null,status:"open"
+    },"return=representation");
+    const th=rows[0];
+    await setState(user.id,chat,"support",{thread_id:th.id});
+    await sendAdmins("<b>💬 گفت‌وگوی پشتیبانی جدید</b>\nکاربر: @"+html(user.username??String(user.id))+"\nشناسه: <code>"+th.id+"</code>",
+      {inline_keyboard:[[{text:"↩️ پاسخ",callback_data:"reply:"+th.id},{text:"🔒 بستن",callback_data:"close:"+th.id}]]});
+    return send(chat,"<b>به پشتیبانی وصل شدی.</b>\nپیام یا فایل خودت را بفرست؛ برای پایان مکالمه /close را ارسال کن.",mainMenu());
   }
   await expireOrders(user.id);
 
   if(["/buy","/new","/plans"].includes(command)) {
     await setState(user.id,chat,"idle");
-    return send(chat,"طرح اشتراک را انتخاب کن:",plansMenu());
+    return send(chat,"<b>🛒 انتخاب طرح اشتراک</b>\nیکی از گزینه‌های زیر را انتخاب کن:",plansMenu());
   }
 
   if(st?.state==="days") {
@@ -348,7 +374,7 @@ async function userMessage(msg:any,st:any) {
     }
     return send(chat,"پیامت به پشتیبانی ارسال شد ✅");
   }
-  return send(chat,"برای شروع /start را بزن.",mainMenu());
+  return send(chat,"برای ادامه از منوی پایین استفاده کن. اگر خواستی از ابتدا شروع کنی، «منوی اصلی» را بزن.",mainMenu());
 }
 
 const healthJson = (value:unknown,status=200) => new Response(JSON.stringify(value),{
@@ -378,7 +404,7 @@ async function healthCheck() {
     if (!routerHealthResponse.ok || !routerHealth?.ok || !routerHealth?.mobile_forward_configured) {
       return healthJson({
         ok:false,service:"moghimi-telegram",database:"ok",telegram:"ok",
-        webhook:"router_not_ready",router_database:routerHealth?.windows_database??false,
+        webhook:"router_not_ready",
         mobile_forward:routerHealth?.mobile_forward_configured??false
       },503);
     }
