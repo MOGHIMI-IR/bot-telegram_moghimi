@@ -443,19 +443,45 @@ Deno.serve(async(req:Request)=>{
   if(req.method!=="POST") return json({ok:false},405);
   if(!TOKEN||!DB_KEY||!URL||!HOOK_SECRET||!CARD) return json({ok:false,code:"not_configured"},503);
   if(req.headers.get("x-telegram-bot-api-secret-token")!==HOOK_SECRET) return json({ok:false},401);
+  let updateId: number | null = null;
   try {
     const u=await req.json();
     const adminIds=await getAdminIds();
     if(adminIds.size===0) return json({ok:false,code:"admins_not_configured"},503);
-    if(u.callback_query) {
-      await callback(u,adminIds);
-    } else if(u.message) {
-      const m=u.message, admin=adminIds.has(String(m.from?.id));
-      const st=await getState(m.from.id);
-      if(admin) await adminMessage(m,st);
-      else await userMessage(m,st);
+
+    const candidateId = Number(u.update_id);
+    updateId = Number.isSafeInteger(candidateId) && candidateId >= 0 ? candidateId : null;
+    if (updateId !== null) {
+      const claimed = await db("rpc/telegram_claim_webhook_update","POST",{
+        p_update_id:updateId,
+        p_stale_seconds:120
+      });
+      if (claimed !== true) return json({ok:true,duplicate:true});
     }
-    return json({ok:true});
+
+    try {
+      if(u.callback_query) {
+        await callback(u,adminIds);
+      } else if(u.message) {
+        const m=u.message, admin=adminIds.has(String(m.from?.id));
+        const st=await getState(m.from.id);
+        if(admin) await adminMessage(m,st);
+        else await userMessage(m,st);
+      }
+      if (updateId !== null) {
+        await db("rpc/telegram_complete_webhook_update","POST",{
+          p_update_id:updateId,p_success:true,p_error_code:null
+        });
+      }
+      return json({ok:true});
+    } catch (error) {
+      if (updateId !== null) {
+        await db("rpc/telegram_complete_webhook_update","POST",{
+          p_update_id:updateId,p_success:false,p_error_code:"handler_failed"
+        }).catch(() => null);
+      }
+      throw error;
+    }
   } catch(e) {
     console.error("moghimi-telegram",e instanceof Error?e.message:"failed");
     return json({ok:false},500);
